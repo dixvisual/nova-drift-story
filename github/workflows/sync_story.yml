@@ -1,0 +1,46 @@
+name: Sync Story from Google Sheet
+
+on:
+  schedule:
+    - cron: '0 * * * *'   # runs every hour
+  workflow_dispatch:      # allows manual run
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Fetch Google Sheet and build JSON
+        run: |
+          # Replace the URL below with your published Google Sheet CSV link
+          CSV_URL="https://docs.google.com/spreadsheets/d/YOUR_SHEET_ID/export?format=csv&gid=0"
+          
+          curl -L "$CSV_URL" -o sheet.csv
+          
+          # Convert CSV to simple JSON (basic version)
+          node -e "
+          const fs = require('fs');
+          const csv = fs.readFileSync('sheet.csv','utf8');
+          const lines = csv.trim().split('\\n');
+          const headers = lines[0].split(',');
+          const data = lines.slice(1).map(line => {
+            const values = line.split(',');
+            const obj = {};
+            headers.forEach((h,i) => obj[h.trim()] = values[i] ? values[i].trim() : '');
+            return obj;
+          });
+          fs.writeFileSync('live_episodes.json', JSON.stringify({ episodes: data }, null, 2));
+          "
+
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git add live_episodes.json
+          git commit -m "Update live_episodes.json from Google Sheet" || echo "No changes"
+          git push
